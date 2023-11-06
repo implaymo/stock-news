@@ -11,6 +11,8 @@ def configure():
 
 configure()
 
+
+
 #####################################################################################################################
 
 # STOCK = "TSLA"
@@ -20,10 +22,10 @@ configure()
 API_KEY_NEWS = os.getenv("API_KEY_NEWS")
 account_sid = os.getenv("account_sid")
 auth_token = os.getenv("auth_token")
-client = Client(account_sid, auth_token)
+twilio_num = os.getenv("twilio_num")
+my_number = os.getenv("my_number")
 
 
-# When STOCK price increase/decreases by 5% between yesterday and the day before yesterday then print("Get News").
 # parameters= {
 #     "function": "TIME_SERIES_DAILY",
 #     "symbol": "TSLA",
@@ -36,15 +38,12 @@ client = Client(account_sid, auth_token)
 ##################################################################################################################
 
 
-
-## STEP 2: Use https://newsapi.org
-# Instead of printing ("Get News"), actually get the first 3 news pieces for the COMPANY_NAME.
-parameters_news = {
+news_params = {
     "q": "Tesla",
     "apiKey": API_KEY_NEWS
 }
 
-response_news = requests.get("https://newsapi.org/v2/everything", params=parameters_news)
+response_news = requests.get("https://newsapi.org/v2/everything", params=news_params)
 response_news.raise_for_status()
 
 data_news = response_news.json()
@@ -58,28 +57,39 @@ for i in range(3):
     all_news.append(news_tuple)
 
 
-## STEP 3: Use https://www.twilio.com
-# Send a seperate message with the percentage change and each article's title and description to your phone number. 
+def send_message(stock_percentage, headline, brief):
+    client = Client(account_sid, auth_token)
+    message_body = f"{stock_percentage}\n{headline}\n{brief}"
+    message = client.messages \
+        .create(
+        body=message_body,
+        from_=twilio_num,
+        to=my_number
+    )
+    print(message.status)
 
 
-
-
-########################### API data, because I have reached the max api requests per day ############################################
+def stock_messages(percentage, tuple_list):
+    for tuple_list in all_news:
+        headline = f"Headline: {news_tuple[0]}"
+        brief = f"Brief: {news_tuple[1]}"
+        send_message(stock_percentage, headline, brief)
 
 
 # Gets markets dates to compare
 last_market_date = list(api_data["Time Series (Daily)"].keys())[0]
-previous_market_date = list(api_data["Time Series (Daily)"].keys())[1]
+day_before_last_marked_day = list(api_data["Time Series (Daily)"].keys())[1]
 # Gets open days from markets dates
-last_day_open_data = float(api_data["Time Series (Daily)"][last_market_date]["1. open"].strip("'"))
-previous_day_open_data = float(api_data["Time Series (Daily)"][previous_market_date]["1. open"].strip("'"))
+last_day_close_value = float(api_data["Time Series (Daily)"][last_market_date]["4. close"].strip("'"))
+day_before_last_day_close_value = float(api_data["Time Series (Daily)"][day_before_last_marked_day]["4. close"].strip("'"))
 
 # Compares the difference between last day and previous day
-percentage_difference = previous_day_open_data * 0.05
-difference_values = last_day_open_data - previous_day_open_data
-if last_day_open_data > previous_day_open_data:
-    print(f"Tesla: 🔺{percentage_difference}%")
-    print(f"Headline: {all_news[0][0]}")
-    print(f"Brief: {all_news[0][1]}")
+percentage_difference = round(((last_day_close_value - day_before_last_day_close_value) / last_day_close_value) * 100, 2)
+if percentage_difference > 0:
+    stock_percentage = f"Tesla: 🔺{percentage_difference}%"
+    stock_messages(stock_percentage, all_news)
 else:
-    print(f"Tesla: 🔻{percentage_difference}%")
+    stock_percentage = f"Tesla: 🔻{percentage_difference}%"
+    stock_messages(stock_percentage, all_news)
+
+
